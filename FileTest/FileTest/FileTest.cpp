@@ -1,4 +1,4 @@
-// FileTest.cpp: определяет точку входа для консольного приложения.
+// FileTest.cpp: Г®ГЇГ°ГҐГ¤ГҐГ«ГїГҐГІ ГІГ®Г·ГЄГі ГўГµГ®Г¤Г  Г¤Г«Гї ГЄГ®Г­Г±Г®Г«ГјГ­Г®ГЈГ® ГЇГ°ГЁГ«Г®Г¦ГҐГ­ГЁГї.
 //
 
 #include "stdafx.h"
@@ -7,8 +7,10 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <stdlib.h>
+#include <fstream>
 #include <clocale>                    
 #include <vector>
+#include <array>
 using namespace std;
 using namespace boost::filesystem;
 
@@ -44,7 +46,7 @@ path Find(path BegPath, string Name, string Type)
 	}
 	return NullPath;
 }
-int digs(double w)
+int LengthOfInteger(double w) //Returns the lenth of the number(to know how many bytes myst be reserved)
 {
 	if (w<10) return 1;
 	int yield = 0;
@@ -55,27 +57,35 @@ int digs(double w)
 	}
 	return yield + 2;
 }
+string MakePathCorrect(const string &BegPath, const string &Search) //Removes useless part of the path (for "Test//Dir1//Dir2//blabla" and "Test//Dir1" we'll get "//Dir1//Dir2//blabla", because we need just the "Dir1" folder)
+{
+	if (strcmp(BegPath.c_str(), Search.c_str()) == 0) return BegPath;
+	int find = BegPath.find(Search);
+	if (find == BegPath.npos) return BegPath;
+	string Result = BegPath.substr(find+Search.length());
+	return Result;
 
+}
 
 class Archive
 {
 private:
-	struct ToIns
+	struct ToExtract//in the code below I'm creating the vector of the files to Extract using this struct
 	{
 		string Name, SearchDir;
 		path WhereToInsert;
 	};
-	struct CommonInfo
+	struct CommonInfo//it's necessary to get Information about Objects in my archive
 	{
 		int size;
 		bool isFile;
 		string FullDir, Name;
 	};
-	struct ToWrite
+	struct ToWrite//struct to remove files from the archive
 	{
 		int Ignore, Write;
 	};
-	path Main;
+	path Main;//path to the archive
 	int NumberOfFiles;
 	vector<CommonInfo> AddedObjects;
 	void CreateDir(path ToCreate)
@@ -94,60 +104,65 @@ private:
 			}
 		}
 	}
-	void FixData(int NewCount, string NewInfo, path ToInsert)
+	void FixData(int NewCount,const string &NewInfo, const path &ToInsert)//function to add new file or directory
 	{
 		string trash = Main.parent_path().string();
 		trash.append("\\trash");
 		trash.append(Main.extension().string());
 		string trash_tmp = Main.parent_path().string();
-		trash_tmp.append("\\shit");
+		trash_tmp.append("\\temp");
 		trash_tmp.append(Main.extension().string());
-		FILE *fw = fopen(trash.c_str(), "w");
-		fclose(fw);
-		fw = fopen(trash.c_str(), "wb");
-		FILE *fr = fopen(Main.string().c_str(), "rb");
+		std::ofstream fw(trash, std::ofstream::binary);
+		std::ifstream fr(Main.string(), std::ifstream::binary);
+		char one[1],c;
 		int old;
-		fscanf(fr, "%d", &old);
-		fprintf(fw, "%d", NewCount);
-		fprintf(fw, "%s", NewInfo.c_str());
+		fr >> old;
+		cout << old;
+		fw << NewCount<<NewInfo;
 		char buf[1];
-		char tmp[30];
-		fseek(fr, digs(old), SEEK_SET);
-		fseek(fw, 0, SEEK_END);
-		char one;
 		int i = 0;
-		while (!feof(fw))
+		if (old != 0)
 		{
-			one = fgetc(fr);
-			if (one != 'я')
+			fr.seekg(LengthOfInteger(old), std::ios::beg);
+			while (!fr.eof())
 			{
-				fputc(one, fw);
-			}
-			if (one == '>')
-			{
-				i++;
-			}
-			if (i == 5 * old)
-			{
-				break;
+				fr >> c;
+				if (c != 'СЏ')
+				{
+					fw << c;
+				}
+				if (c == '>')
+				{
+					i++;
+				}
+				if (i == 5 * old)
+				{
+					break;
+				}
 			}
 		}
 		if (is_regular_file(ToInsert))
 		{
-			FILE *_ToInsert = fopen(ToInsert.string().c_str(), "rb");
-			while (!feof(_ToInsert))
+			std::ifstream _ToInsert(ToInsert.string(), std::ifstream::binary);
+			_ToInsert.read(buf, sizeof(buf));
+			while (!_ToInsert.eof())
 			{
-				if (fread(buf, 1, 1, _ToInsert) == 1) fwrite(buf, 1, 1, fw);
+				fw.write(buf, sizeof(buf));
+				_ToInsert.read(buf, sizeof(buf));
 			}
-			fclose(_ToInsert);
+			_ToInsert.close();
 		}
-		while (!feof(fr))
+		if (old != 0)
 		{
-			if (fread(buf, 1, 1, fr) == 1)
-				fwrite(buf, 1, 1, fw);
+			fr.read(buf, sizeof(buf));
+			while (!fr.eof())
+			{
+				fw.write(buf, sizeof(buf));
+				fr.read(buf, sizeof(buf));
+			}
 		}
-		fclose(fw);
-		fclose(fr);
+		fw.close();
+		fr.close();
 		try
 		{
 			rename(Main, trash_tmp);
@@ -159,63 +174,36 @@ private:
 		}
 		boost::filesystem::remove(trash_tmp);
 	}
-	string MakePathCorrect(string BegPath, string Search)
-	{
-		if (strcmp(BegPath.c_str(), Search.c_str()) == 0) return BegPath;
-		string::iterator itr;
-		char * str1 = new char[BegPath.length() + 1];
-		int i = 0;
-		for (itr = BegPath.begin(); itr != BegPath.end(); itr++)
-		{
-			str1[i] = *itr;
-			i++;
-		}
-		str1[BegPath.length()] = 0;
-		char * str2 = new char[Search.length() + 1];
-		i = 0;
-		for (itr = Search.begin(); itr != Search.end(); itr++)
-		{
-			str2[i] = *itr;
-			i++;
-		}
-		str2[Search.length()] = 0;
-		char *ptr = strstr(str1, str2);
-		if (!ptr) return "";
-		string Result(ptr);
-		delete[] str1;
-		delete[] str2;
-		return Result;
-	}
-	struct InfoBlock
+	struct InfoBlock//Information string that looks like "<<1><File.mp3><Test//Dir1//Dir2><12345>>" 1/0 - type of object(1 - file, 0 - folder), then name of the object, path in the archive and finaly size of the FILE
 	{
 	private:
-		char* tmp;
+		string tmp;
 	public:
 		void Input(char *New)
 		{
 			tmp = New;
 		}
-		string Search()
+		//the methods below returns the needed parts of the InfoBlock
+		string Name()
 		{
 			int slength = 0;
-			char *search;
 			for (int i = 5; i < 64; i++)
 			{
 				if (tmp[i] == '>') break;
 				slength++;
 			}
 			if (slength == 0) return "";
+			char* find = new char[slength + 1];
 			int j = 0;
-			search = new char[slength + 1];
 			for (int i = 5; i < 64; i++)
 			{
 				if (tmp[i] == '>') break;
-				search[j] = tmp[i];
+				find[j] = tmp[i];
 				j++;
 			}
-			search[slength] = 0;
-			string Result(search);
-			delete[] search;
+			find[slength] = 0;
+			string Result(find);
+			delete[] find;
 			return Result;
 		}
 		string Size()
@@ -250,7 +238,8 @@ private:
 			delete[] _NecSize;
 			return Result;
 		}
-		string SearchDir(string __SearchDir)
+		string SearchDir(string __SearchDir)//the method to check the attachment the object to __Searchdir folder in archive(func returns the part of the object path which lenghth is equal to the arg length)\
+			example: file is in Dir1/Dir2/Dir3 folder, we are sending "Dir1/Dir2" as __SearchDir and getting "Dir1/Dir2", it means that it's necessary file
 		{
 			int DirBeg = 0, count = 0;
 			for (int i = 0; i < 64; i++)
@@ -276,7 +265,7 @@ private:
 			delete[] _SearchDir;
 			return Result;
 		}
-		string FullDir()
+		string FullDir()//full path of the object in archive
 		{
 			int DirBeg = 0, count = 0, DirLength = 0;
 			for (int i = 0; i < 64; i++)
@@ -311,7 +300,7 @@ private:
 		{
 			return (int)tmp[2] - (int)'0';
 		}
-		int Length()
+		int Length()//the length of the InfoBlock
 		{
 			int Result = 0;
 			for (int i = 0; i < 64; i++)
@@ -322,75 +311,76 @@ private:
 		}
 	};
 public:
-	Archive(string CreateNew, string Name)
+	Archive(const string &CreateNew,const string &Name)
 	{
 		NumberOfFiles = 0;
-		CreateNew.append("\\");
-		CreateNew.append(Name);
-		CreateNew.append(".");
-		CreateNew.append("arc");
 		Main = CreateNew;
-		FILE *_Main = fopen(Main.string().c_str(), "w");
-		fprintf(_Main, "%d", NumberOfFiles);
-		fclose(_Main);
+		Main.append("\\");
+		Main.append(Name);
+		Main.append(".arc");
+		std::ofstream _Main(Main.string());
+		_Main << NumberOfFiles;
+		_Main.close();
 	}
-	Archive(path Real) 
+	Archive(const path& Real) 
 	{
 		if(exists(Real))Main = Real;
-		FILE *GetCount = fopen(Main.string().c_str(), "r");
-		fscanf(GetCount, "%d", &NumberOfFiles);
-		fclose(GetCount);
+		std::ifstream GetCount(Main.string());
+		GetCount >> NumberOfFiles;
+		GetCount.close();
 	}
-	void print()
+	void print()//to print the list of all objects in the archive
 	{
 		cout << NumberOfFiles << endl;
-		vector<CommonInfo>::iterator itr;
-		for (itr = AddedObjects.begin(); itr != AddedObjects.end(); itr++)
+		AddedObjects.clear();
+		GetInfo();
+		for (const auto & kpv : AddedObjects)
 		{
-			cout << itr->Name << endl;
-			cout << itr->size << endl;
-			cout << itr->FullDir << endl;
-			if (itr->isFile) cout << "File" << endl;
+			cout << kpv.Name << endl;
+			cout << kpv.size << endl;
+			cout << kpv.FullDir << endl;
+			if (kpv.isFile) cout << "File" << endl;
 			else cout << "Directory" << endl;
 			cout << "___________________________________" << endl;
 		}
 	}
-	void GetInfo()
+	void GetInfo()//gets Inforamtion to print it
 	{
 		int type=0;
-		FILE *fr = fopen(Main.string().c_str(), "rb");
-		fseek(fr, digs((double)NumberOfFiles), SEEK_SET);
+		std::ifstream fr(Main.string(), std::ifstream::binary);
+		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
 		char tmp[64];
-		char t;
+		char t[1];
 		InfoBlock str;
 		CommonInfo obj;
+		AddedObjects.clear();
 		int s = 0;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
 			for (int i = 0; i < 64; i++) tmp[i] = 0;
 			for (int y = 0; y < 64; y++)
 			{
-				fscanf(fr, "%c", &t);
-				if (t == '>')
+				fr.read(t, sizeof(t));
+				if (t[0] == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t;
+				tmp[y] = t[0];
 			}
 			s = 0;
 			str.Input(tmp);
 			obj.FullDir = str.FullDir();
 			obj.size = atoi(str.Size().c_str());
-			obj.Name = str.Search();
+			obj.Name = str.Name();
 			type = str.Type();
 			if(type==1)obj.isFile = true;
 			else obj.isFile = false;
 			AddedObjects.push_back(obj);
 		}
-		fclose(fr);
+		fr.close();
 	}
-	void DeleteObject(string Name, string SearchDir, int Type)
+	void RemoveObject(const string &Name,const string &SearchDir, int Type)//Deletes some object from the archive(1 - the name of the object, 2-the path to this object in my archive, 3- type of the object(1-file,0 -folder)
 	{
 		vector<ToWrite> FilesToIgnore;
 		vector<ToWrite> InfoToIgnore;
@@ -398,16 +388,14 @@ public:
 		trash.append("\\trash");
 		trash.append(Main.extension().string());
 		string trash_tmp = Main.parent_path().string();
-		trash_tmp.append("\\shit");
+		trash_tmp.append("\\temp");
 		trash_tmp.append(Main.extension().string());
-		FILE *fw = fopen(trash.c_str(), "w");
-		fclose(fw);
-		fw = fopen(trash.c_str(), "wb");
-		FILE *fr = fopen(Main.string().c_str(), "rb");
+		std::ofstream fw(trash, std::ofstream::binary);
+		std::ifstream fr(Main.string(), std::ifstream::binary);
 		int WrFl =0, WrInf = 0,old = NumberOfFiles;
-		fseek(fr, digs(NumberOfFiles), SEEK_SET);
+		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
 		char tmp[64];
-		char t;
+		char t[1];
 		int s = 0, type = 0;
 		InfoBlock str;
 		ToWrite obj;
@@ -418,41 +406,36 @@ public:
 			for (int i = 0; i < 64; i++) tmp[i] = 0;
 			for (int y = 0; y < 64; y++)
 			{
-				fscanf(fr, "%c", &t);
-				if (t == '>')
+				fr.read(t, sizeof(t));
+				if (t[0] == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t;
+				tmp[y] = t[0];
 			}
 			s = 0;
 			str.Input(tmp);
-			search = str.Search();
+			search = str.Name();
 			NecSize = str.Size();
 			_SearchDir = str.SearchDir(SearchDir);
 			type = str.Type();
-			bool needed = false;
-			if ((Type == 1) && (type == Type) && (strcmp(search.c_str(), Name.c_str()) == 0) && (strcmp(_SearchDir.c_str(), SearchDir.c_str()) == 0) || ((Type == 0)&& (strcmp(_SearchDir.c_str(), SearchDir.c_str()) == 0))) needed = true;
-			for (int i = 0; i < 1; i++)
+			if ((Type == 1) && (type == Type) && (strcmp(search.c_str(), Name.c_str()) == 0) && (strcmp(_SearchDir.c_str(), SearchDir.c_str()) == 0) || ((Type == 0) && (strcmp(_SearchDir.c_str(), SearchDir.c_str()) == 0)))
 			{
-				if (needed)
-				{
-					NewCount--;
-					obj.Ignore = atoi(NecSize.c_str());
-					obj.Write = WrFl;
-					FilesToIgnore.push_back(obj);
-					obj.Write = WrInf;
-					obj.Ignore = str.Length() + 1;
-					InfoToIgnore.push_back(obj);
-					WrFl = 0;
-					WrInf = 0;
-				}
-				if (!needed)
-				{
-					WrFl += atoi(NecSize.c_str());
-					WrInf += (str.Length() + 1);
-				}
+				NewCount--;
+				obj.Ignore = atoi(NecSize.c_str());
+				obj.Write = WrFl;
+				FilesToIgnore.push_back(obj);
+				obj.Write = WrInf;
+				obj.Ignore = str.Length() + 1;
+				InfoToIgnore.push_back(obj);
+				WrFl = 0;
+				WrInf = 0;
+			}
+			else
+			{
+				WrFl += atoi(NecSize.c_str());
+				WrInf += (str.Length() + 1);
 			}
 		}
 		obj.Ignore = 0;
@@ -461,38 +444,38 @@ public:
 		obj.Write = WrInf;
 		obj.Ignore = 0;
 		InfoToIgnore.push_back(obj);
-		fseek(fr, digs(old), SEEK_SET);
+		fr.seekg(LengthOfInteger(old), std::ios::beg);
 		NumberOfFiles = NewCount;
-		fprintf(fw, "%d", NumberOfFiles);
+		fw << NumberOfFiles;
 		vector<ToWrite>::iterator itr;
 		char buf[1];
 		int AddedBytes;
 		for (itr = InfoToIgnore.begin(); itr != InfoToIgnore.end(); itr++)
 		{
 			AddedBytes = 0;
-			while (!feof(fr))
+			while (!fr.eof())
 			{
 				if (AddedBytes == itr->Write) break;
-				fread(buf, 1, 1, fr);
-				fwrite(buf, 1, 1, fw);
+				fr.read(buf, sizeof(buf));
+				fw.write(buf,sizeof(buf));
 				AddedBytes++;
 			}
-			fseek(fr, itr->Ignore, SEEK_CUR);
+			fr.seekg(itr->Ignore, std::ios::cur);
 		}
 		for (itr = FilesToIgnore.begin(); itr != FilesToIgnore.end(); itr++)
 		{
 			AddedBytes = 0;
-			while (!feof(fr))
+			while (!fr.eof())
 			{
 				if (AddedBytes == itr->Write) break;
-				fread(buf, 1, 1, fr);
-				fwrite(buf, 1, 1, fw);
+				fr.read(buf, sizeof(buf));
+				fw.write(buf, sizeof(buf));
 				AddedBytes++;
 			}
-			fseek(fr, itr->Ignore, SEEK_CUR);
+			fr.seekg(itr->Ignore, std::ios::cur);
 		}
-		fclose(fw);
-		fclose(fr);
+		fw.close();
+		fr.close();
 		try
 		{
 			rename(Main, trash_tmp);
@@ -504,7 +487,8 @@ public:
 		}
 		boost::filesystem::remove(trash_tmp);
 	}
-	void Insert(path File,string Directory)
+	void Insert(const path &File,const string &Directory)//prepares the InfoBlock and sends it in FixData with the path to the object and new number of objects in archive)\
+		Warning: this func can only insert file or the directory(without inserting files and folders in it)
 	{
 		char *tmp;
 		if (exists(File))
@@ -523,8 +507,8 @@ public:
 			Info.append("><");
 			if (is_regular_file(File))
 			{
-				tmp = new char[digs(f_size) + 1];
-				tmp[digs(f_size)] = 0;
+				tmp = new char[LengthOfInteger(f_size) + 1];
+				tmp[LengthOfInteger(f_size)] = 0;
 				itoa(f_size, tmp, 10);
 				Info.append(tmp);
 				delete[] tmp;
@@ -536,46 +520,54 @@ public:
 		}
 		else return;
 	}
-	void ExtractDirectory(string SearchDir,path Directory)
+	void ExtractDirectory(string SearchDir,path Directory)//extracts the directory with all objects in it(1 - the path to the directory in archive(FULL PATH), 2 - the path in the external storage(where to insert)
 	{
-		FILE *fr = fopen(Main.string().c_str(), "rb");
-		fseek(fr, digs(NumberOfFiles), SEEK_SET);
+		std::ifstream fr(Main.string(), std::ifstream::binary);
+		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
 		char tmp[64];
-		char t;
-		vector<ToIns> Files;
+		char t[1];
+		vector<ToExtract> Files;
 		int s = 0,type=0;
 		path BegPath = SearchDir;
 		InfoBlock str;
-		string find = BegPath.filename().string();
 		string search, NecSize, _SearchDir, FullDir;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
 			for (int i = 0; i < 64; i++) tmp[i] = 0;
 			for (int y = 0; y < 64; y++)
 			{
-				fscanf(fr, "%c", &t);
-				if (t == '>')
+				fr.read(t, sizeof(t));
+				if (t[0] == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t;
+				tmp[y] = t[0];
 			}
 			s = 0;
 			str.Input(tmp);
-			search = str.Search();
+			search = str.Name();
 			NecSize = str.Size();
 			_SearchDir = str.SearchDir(SearchDir);
 			FullDir = str.FullDir();
 			path WhereToIns;
 			WhereToIns = Directory;
-			WhereToIns.append(MakePathCorrect(FullDir, find));
+			string find;
+			if (BegPath.has_parent_path())
+			{
+				find = BegPath.parent_path().string();
+				WhereToIns.append(MakePathCorrect(FullDir, find));
+			}
+			else
+			{
+				WhereToIns.append(FullDir);
+			}
 			type= (int)tmp[2]-(int)'0';
 			if (strcmp(SearchDir.c_str(), _SearchDir.c_str()) == 0)
 			{
 				if (type == 1)
 				{
-			      	ToIns a;
+			      	ToExtract a;
 					a.Name = search;
 					a.SearchDir = FullDir;
 					a.WhereToInsert = WhereToIns;
@@ -588,16 +580,16 @@ public:
 			}
 			type = 0;
 		}
-		vector<ToIns>::iterator a;
-		for (a = Files.begin(); a < Files.end(); a++)
+		fr.close();
+		for (const auto &itr : Files)
 		{
-			CreateDir(a->WhereToInsert.parent_path());
-			ExtractFile(a->Name, a->WhereToInsert, a->SearchDir);
+			CreateDir(itr.WhereToInsert.parent_path());
+			ExtractFile(itr.Name, itr.WhereToInsert, itr.SearchDir);
 		}
 	}
-	void ExtractFile(string FileName, path Directory, string SearchDir)
+	void ExtractFile(string FileName, path Directory, string SearchDir)//1 - the name of the file, 2 - where to insert, 2 - the path to this file in the archive
 	{
-		FILE *fr  = fopen(Main.string().c_str(), "rb");
+		std::ifstream fr(Main.string(), std::ofstream::binary);
 		string work;
 		if (is_directory(Directory))
 		{
@@ -606,29 +598,29 @@ public:
 			work.append(FileName);
 		}
 		else return;
-		fseek(fr, digs(NumberOfFiles), SEEK_SET);
+		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios_base::beg);
 		char tmp[64];
 		InfoBlock str;
 		string search, NecSize, _SearchDir;
 		int num = 0,trash=0, _NecSize=0;
-		char t;
+		char t[1];
 		int s = 0;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
 			for (int i = 0; i < 64; i++) tmp[i] = 0;
 			for (int y = 0; y < 64; y++)
 			{
-				fscanf(fr, "%c", &t);
-				if (t == '>')
+				fr.read(t, sizeof(t));
+				if (t[0] == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t; 
+				tmp[y] = t[0]; 
 			}
 			s = 0;
 			str.Input(tmp);
-			search = str.Search();
+			search = str.Name();
 			NecSize = str.Size();
 			_SearchDir = str.FullDir();
 			if ((strcmp(FileName.c_str(), search.c_str()) == 0) && (strcmp(_SearchDir.c_str(), SearchDir.c_str()) == 0))
@@ -641,34 +633,35 @@ public:
 		}
 		if (_NecSize != 0)
 		{
-			FILE *fw = fopen(work.c_str(), "w");
-			freopen(work.c_str(), "wb", fw);
-			char find;
+			std::ofstream fw(work.c_str(), std::ofstream::binary);
+			char find[1];
 			int _find = 0;
-			fseek(fr, digs(NumberOfFiles), SEEK_SET);
-			while (!feof(fr))
+			fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
+			while (!fr.eof())
 			{
-				find = fgetc(fr);
-				if (find == '>')
+				fr.read(find, sizeof(find));
+				if (find[0] == '>')
 				{
 					_find++;
 				}
 				if (_find == 5 * NumberOfFiles) break;
 			}
-			fseek(fr, trash, SEEK_CUR);
+			fr.seekg(trash, std::ios_base::cur);
 			char buf[1];
 			int i = 0;
-			while (!feof(fr))
+			while (!fr.eof())
 			{
-				if (fread(buf, 1, 1, fr) == 1) fwrite(buf, 1, 1, fw);
-				i++;
 				if (i == _NecSize) break;
+				fr.read(buf, sizeof(buf));
+				fw.write(buf, sizeof(buf));
+				i++;
 			}
-			fclose(fw);
+			fw.close();
 		}
-		fclose(fr);
+		fr.close();
 	}
-	void InsertDirectory(path Directory, string Path, int iter)
+	void InsertDirectory(path Directory, string Path, int iter=0)//1 - path in the external storage to the needed folder, 2- folder in the archive(where to insert the object), 3 - iteration variable\
+		this func inserts ALL objects in the folder to the archive(even folder/folder/folder/1.jpg)
 	{
 		if (!is_directory(Directory)) return;
 		directory_iterator itr(Directory);
@@ -676,8 +669,11 @@ public:
 		string New;
 		if (iter == 0)
 		{
-			Insert(Directory, Directory.filename().string());
-			Path = Directory.filename().string();
+			New = Path;
+			if (Path != "") New.append("//");
+			New.append(Directory.filename().string());
+			Path = New;
+			Insert(Directory, New);
 			iter++;
 		}
 		while (itr != directory_iterator{})
@@ -688,7 +684,7 @@ public:
 				if (is_directory(tmp))
 				{
 					New = Path;
-					New.append("//");
+					if (Path != "") New.append("//");
 					New.append(tmp.filename().string());
 					Insert(tmp,New);
 					InsertDirectory(tmp, New, iter);
@@ -715,15 +711,9 @@ public:
 int _tmain(int argc, _TCHAR* argv[])
 {
 	setlocale(LC_ALL, "Russian");
-	Archive b("F:\\1.arc"); //обязательно файл с раширением arc
-	//Примеры:
-	//b.ExtractDirectory("Test", "F:\\45"); //1 - название папки в архиве, 2 - куда извлекать
-	//b.InsertDirectory("F:\\Test", "Test//Directory", ""); //1 - путь к папке, которую надо записать в архив, 2 - в какую папку(в архиве) записать("", если нужно записать в корень архива), 3 - переменная для рекурсии(нужно указать 0)
-	//b.Insert("F:\\2.jpg", "Test//55"); //записать ФАЙЛ, 1 - путь к файлу, 2 - в какую папку(в архиве) записать("", если нужно записать в корень архива)
-	//b.DeleteObject("33", "Test//33", 0); // удалить файл/папку, 1 - имя ФАЙЛА, 2 - папка в архиве(в которой лежит удаляемый файл или которую надо полностью стереть из архива, "", если нужна корневая папка архива), 3 - тип объекта(1-файл, 0 - папка)
-	//b.ExtractFile("1.mp3", "F:\\Test", "0"); //1 - имя файла, 2 - куда извлечь, 3 - папка архива, содержащая файл (0, если файл находится в корне архива)
-	//папки в архиве разделаются с помощью "//", поэтому для Insert, DeleteObject и ExtractFile надо указывать папки в формать Dir//Dir//Dir
+	//Archive b("F:\\1.arc"); //РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ С„Р°Р№Р» СЃ СЂР°С€РёСЂРµРЅРёРµРј arc
 	system("pause");
 	return 0;
 }
+
 
