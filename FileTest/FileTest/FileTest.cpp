@@ -187,7 +187,7 @@ private:
 		string Name()
 		{
 			int slength = 0;
-			for (int i = 5; i < 64; i++)
+			for (int i = 5; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				slength++;
@@ -195,7 +195,7 @@ private:
 			if (slength == 0) return "";
 			char* find = new char[slength + 1];
 			int j = 0;
-			for (int i = 5; i < 64; i++)
+			for (int i = 5; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				find[j] = tmp[i];
@@ -209,7 +209,7 @@ private:
 		string Size()
 		{
 			int SizeBeg = 0, count = 0;
-			for (int i = 0; i < 64; i++)
+			for (int i = 0; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') count++;
 				if (count == 3)
@@ -219,7 +219,7 @@ private:
 				}
 			}
 			int szlength = 0;
-			for (int i = SizeBeg; i < 64; i++)
+			for (int i = SizeBeg; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				szlength++;
@@ -227,7 +227,7 @@ private:
 			if (szlength == 0) return "";
 			int j = 0;
 			char * _NecSize = new char[szlength + 1];
-			for (int i = SizeBeg; i < 64; i++)
+			for (int i = SizeBeg; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				_NecSize[j] = tmp[i];
@@ -242,7 +242,7 @@ private:
 			example: file is in Dir1/Dir2/Dir3 folder, we are sending "Dir1/Dir2" as __SearchDir and getting "Dir1/Dir2", it means that it's necessary file
 		{
 			int DirBeg = 0, count = 0;
-			for (int i = 0; i < 64; i++)
+			for (int i = 0; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') count++;
 				if (count == 2)
@@ -268,7 +268,7 @@ private:
 		string FullDir()//full path of the object in archive
 		{
 			int DirBeg = 0, count = 0, DirLength = 0;
-			for (int i = 0; i < 64; i++)
+			for (int i = 0; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') count++;
 				if (count == 2)
@@ -277,7 +277,7 @@ private:
 					break;
 				}
 			}
-			for (int i = DirBeg; i < 64; i++)
+			for (int i = DirBeg; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				DirLength++;
@@ -285,7 +285,7 @@ private:
 			if (DirLength == 0) return"";
 			char *FullDir = new char[DirLength + 1];
 			int j = 0;
-			for (int i = DirBeg; i < 64; i++)
+			for (int i = DirBeg; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				FullDir[j] = tmp[i];
@@ -303,7 +303,7 @@ private:
 		int Length()//the length of the InfoBlock
 		{
 			int Result = 0;
-			for (int i = 0; i < 64; i++)
+			for (int i = 0; i < tmp.length(); i++)
 			{
 				if (tmp[i] != 0) Result++;
 			}
@@ -380,7 +380,7 @@ public:
 		}
 		fr.close();
 	}
-	void RemoveObject(const string &Name,const string &SearchDir, int Type)//Deletes some object from the archive(1 - the name of the object, 2-the path to this object in my archive, 3- type of the object(1-file,0 -folder)
+	void RemoveObject(string Name,string SearchDir, int Type)//Deletes some object from the archive(1 - the name of the object, 2-the path to this object in my archive, 3- type of the object(1-file,0 -folder)
 	{
 		vector<ToWrite> FilesToIgnore;
 		vector<ToWrite> InfoToIgnore;
@@ -395,7 +395,7 @@ public:
 		int WrFl =0, WrInf = 0,old = NumberOfFiles;
 		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
 		char tmp[64];
-		char t[1];
+		char t;
 		int s = 0, type = 0;
 		InfoBlock str;
 		ToWrite obj;
@@ -406,13 +406,13 @@ public:
 			for (int i = 0; i < 64; i++) tmp[i] = 0;
 			for (int y = 0; y < 64; y++)
 			{
-				fr.read(t, sizeof(t));
-				if (t[0] == '>')
+				fr >> t;
+				if (t == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t[0];
+				tmp[y] = t;
 			}
 			s = 0;
 			str.Input(tmp);
@@ -711,7 +711,6 @@ public:
 int _tmain(int argc, _TCHAR* argv[])
 {
 	setlocale(LC_ALL, "Russian");
-	//Archive b("F:\\1.arc"); //обязательно файл с раширением arc
 	system("pause");
 	return 0;
 }
