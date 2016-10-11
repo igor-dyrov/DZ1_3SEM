@@ -6,13 +6,18 @@
 #include <boost\filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/fstream.hpp>
+#include <boost/shared_ptr.hpp>
 #include <stdlib.h>
 #include <fstream>
+#include <memory>
+#include <algorithm>
 #include <clocale>                    
 #include <vector>
-#include <array>
 using namespace std;
 using namespace boost::filesystem;
+
+#define FirstNameChar 5
+#define TypeChar 2
 
 path Find(path BegPath, string Name, string Type)
 {
@@ -57,15 +62,6 @@ int LengthOfInteger(double w) //Returns the lenth of the number(to know how many
 	}
 	return yield + 2;
 }
-string MakePathCorrect(const string &BegPath, const string &Search) //Removes useless part of the path (for "Test//Dir1//Dir2//blabla" and "Test//Dir1" we'll get "//Dir1//Dir2//blabla", because we need just the "Dir1" folder)
-{
-	if (strcmp(BegPath.c_str(), Search.c_str()) == 0) return BegPath;
-	int find = BegPath.find(Search);
-	if (find == BegPath.npos) return BegPath;
-	string Result = BegPath.substr(find+Search.length());
-	return Result;
-
-}
 
 class Archive
 {
@@ -87,7 +83,6 @@ private:
 	};
 	path Main;//path to the archive
 	int NumberOfFiles;
-	vector<CommonInfo> AddedObjects;
 	void CreateDir(path ToCreate)
 	{
 		bool profit = false;
@@ -114,10 +109,9 @@ private:
 		trash_tmp.append(Main.extension().string());
 		std::ofstream fw(trash, std::ofstream::binary);
 		std::ifstream fr(Main.string(), std::ifstream::binary);
-		char one[1],c;
+		char c;
 		int old;
 		fr >> old;
-		cout << old;
 		fw << NewCount<<NewInfo;
 		char buf[1];
 		int i = 0;
@@ -174,36 +168,46 @@ private:
 		}
 		boost::filesystem::remove(trash_tmp);
 	}
+public:
+	vector<CommonInfo> AddedObjects;
+	Archive(const string &CreateNew,string Name)
+	{
+		NumberOfFiles = 0;
+		Main = CreateNew;
+		Main.append("\\");
+		Name.append(".arc");
+		Main.append(Name);
+		std::ofstream _Main(Main.string());
+		_Main << NumberOfFiles;
+		_Main.close();
+	}
+	Archive(const path& Real) 
+	{
+		if(exists(Real))Main = Real;
+		std::ifstream GetCount(Main.string());
+		GetCount >> NumberOfFiles;
+		GetCount.close();
+	}
 	struct InfoBlock//Information string that looks like "<<1><File.mp3><Test//Dir1//Dir2><12345>>" 1/0 - type of object(1 - file, 0 - folder), then name of the object, path in the archive and finaly size of the FILE
 	{
-	private:
 		string tmp;
-	public:
-		void Input(char *New)
+		void Input(vector<char> New)
 		{
-			tmp = New;
+			int i = 0;
+			tmp.clear();
+			for_each(New.begin(), New.end(), [this, &i](char a){tmp.append(" "); tmp[i] = a; i++; });
 		}
 		//the methods below returns the needed parts of the InfoBlock
 		string Name()
 		{
 			int slength = 0;
-			for (int i = 5; i < tmp.length(); i++)
+			for (int i = FirstNameChar; i < tmp.length(); i++)
 			{
 				if (tmp[i] == '>') break;
 				slength++;
 			}
 			if (slength == 0) return "";
-			char* find = new char[slength + 1];
-			int j = 0;
-			for (int i = 5; i < tmp.length(); i++)
-			{
-				if (tmp[i] == '>') break;
-				find[j] = tmp[i];
-				j++;
-			}
-			find[slength] = 0;
-			string Result(find);
-			delete[] find;
+			string Result = tmp.substr(FirstNameChar,slength);
 			return Result;
 		}
 		string Size()
@@ -224,22 +228,11 @@ private:
 				if (tmp[i] == '>') break;
 				szlength++;
 			}
-			if (szlength == 0) return "";
-			int j = 0;
-			char * _NecSize = new char[szlength + 1];
-			for (int i = SizeBeg; i < tmp.length(); i++)
-			{
-				if (tmp[i] == '>') break;
-				_NecSize[j] = tmp[i];
-				j++;
-			}
-			_NecSize[szlength] = 0;
-			string Result(_NecSize);
-			delete[] _NecSize;
+			string Result = tmp.substr(SizeBeg,szlength);
 			return Result;
 		}
 		string SearchDir(string __SearchDir)//the method to check the attachment the object to __Searchdir folder in archive(func returns the part of the object path which lenghth is equal to the arg length)\
-			example: file is in Dir1/Dir2/Dir3 folder, we are sending "Dir1/Dir2" as __SearchDir and getting "Dir1/Dir2", it means that it's necessary file
+						example: file is in Dir1/Dir2/Dir3 folder, we are sending "Dir1/Dir2" as __SearchDir and getting "Dir1/Dir2", it means that it's necessary file
 		{
 			int DirBeg = 0, count = 0;
 			for (int i = 0; i < tmp.length(); i++)
@@ -252,17 +245,7 @@ private:
 				}
 			}
 			if (__SearchDir.length() == 0) return "";
-			char*_SearchDir = new char[__SearchDir.length() + 1];
-			int j = 0;
-			for (int i = DirBeg; i < DirBeg + __SearchDir.length(); i++)
-			{
-				if (tmp[i] == '>') break;
-				_SearchDir[j] = tmp[i];
-				j++;
-			}
-			_SearchDir[__SearchDir.length()] = 0;
-			string Result(_SearchDir);
-			delete[] _SearchDir;
+			string Result = tmp.substr(DirBeg,__SearchDir.length());
 			return Result;
 		}
 		string FullDir()//full path of the object in archive
@@ -283,51 +266,26 @@ private:
 				DirLength++;
 			}
 			if (DirLength == 0) return"";
-			char *FullDir = new char[DirLength + 1];
-			int j = 0;
-			for (int i = DirBeg; i < tmp.length(); i++)
-			{
-				if (tmp[i] == '>') break;
-				FullDir[j] = tmp[i];
-				j++;
-			}
-			FullDir[DirLength] = 0;
-			string Result(FullDir);
-			delete[] FullDir;
+			string Result = tmp.substr(DirBeg,DirLength);
 			return Result;
 		}
 		int Type()
 		{
-			return (int)tmp[2] - (int)'0';
+			return (int)tmp[TypeChar] - (int)'0';
 		}
 		int Length()//the length of the InfoBlock
 		{
-			int Result = 0;
-			for (int i = 0; i < tmp.length(); i++)
-			{
-				if (tmp[i] != 0) Result++;
-			}
-			return Result;
+			return tmp.length();
 		}
 	};
-public:
-	Archive(const string &CreateNew,const string &Name)
+	string MakePathCorrect(const string &BegPath, const string &Search) //Removes useless part of the path (for "Test//Dir1//Dir2//blabla" and "Test//Dir1" we'll get "//Dir1//Dir2//blabla", because we need just the "Dir1" folder)
 	{
-		NumberOfFiles = 0;
-		Main = CreateNew;
-		Main.append("\\");
-		Main.append(Name);
-		Main.append(".arc");
-		std::ofstream _Main(Main.string());
-		_Main << NumberOfFiles;
-		_Main.close();
-	}
-	Archive(const path& Real) 
-	{
-		if(exists(Real))Main = Real;
-		std::ifstream GetCount(Main.string());
-		GetCount >> NumberOfFiles;
-		GetCount.close();
+		if (strcmp(BegPath.c_str(), Search.c_str()) == 0) return BegPath;
+		int find = BegPath.find(Search);
+		if (find == BegPath.npos) return BegPath;
+		string Result = BegPath.substr(find + Search.length());
+		return Result;
+
 	}
 	void print()//to print the list of all objects in the archive
 	{
@@ -349,7 +307,7 @@ public:
 		int type=0;
 		std::ifstream fr(Main.string(), std::ifstream::binary);
 		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
-		char tmp[64];
+		vector<char> tmp;
 		char t[1];
 		InfoBlock str;
 		CommonInfo obj;
@@ -357,8 +315,7 @@ public:
 		int s = 0;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
-			for (int i = 0; i < 64; i++) tmp[i] = 0;
-			for (int y = 0; y < 64; y++)
+			while (!fr.eof())
 			{
 				fr.read(t, sizeof(t));
 				if (t[0] == '>')
@@ -366,10 +323,10 @@ public:
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t[0];
+				tmp.push_back(t[0]);
 			}
 			s = 0;
-			str.Input(tmp);
+			str.Input(move(tmp));
 			obj.FullDir = str.FullDir();
 			obj.size = atoi(str.Size().c_str());
 			obj.Name = str.Name();
@@ -394,7 +351,7 @@ public:
 		std::ifstream fr(Main.string(), std::ifstream::binary);
 		int WrFl =0, WrInf = 0,old = NumberOfFiles;
 		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
-		char tmp[64];
+		vector<char> tmp;
 		char t;
 		int s = 0, type = 0;
 		InfoBlock str;
@@ -403,8 +360,7 @@ public:
 		int NewCount = NumberOfFiles;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
-			for (int i = 0; i < 64; i++) tmp[i] = 0;
-			for (int y = 0; y < 64; y++)
+			while (!fr.eof())
 			{
 				fr >> t;
 				if (t == '>')
@@ -412,10 +368,10 @@ public:
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t;
+				tmp.push_back(t);
 			}
-			s = 0;
-			str.Input(tmp);
+			s = 0; cout << tmp << endl;
+			str.Input(move(tmp));
 			search = str.Name();
 			NecSize = str.Size();
 			_SearchDir = str.SearchDir(SearchDir);
@@ -427,7 +383,7 @@ public:
 				obj.Write = WrFl;
 				FilesToIgnore.push_back(obj);
 				obj.Write = WrInf;
-				obj.Ignore = str.Length() + 1;
+				obj.Ignore = str.Length()+1;
 				InfoToIgnore.push_back(obj);
 				WrFl = 0;
 				WrInf = 0;
@@ -435,7 +391,7 @@ public:
 			else
 			{
 				WrFl += atoi(NecSize.c_str());
-				WrInf += (str.Length() + 1);
+				WrInf += (str.Length()+1);
 			}
 		}
 		obj.Ignore = 0;
@@ -447,32 +403,31 @@ public:
 		fr.seekg(LengthOfInteger(old), std::ios::beg);
 		NumberOfFiles = NewCount;
 		fw << NumberOfFiles;
-		vector<ToWrite>::iterator itr;
 		char buf[1];
 		int AddedBytes;
-		for (itr = InfoToIgnore.begin(); itr != InfoToIgnore.end(); itr++)
+		for (const auto& itr : InfoToIgnore)
 		{
 			AddedBytes = 0;
 			while (!fr.eof())
 			{
-				if (AddedBytes == itr->Write) break;
+				if (AddedBytes == itr.Write) break;
 				fr.read(buf, sizeof(buf));
 				fw.write(buf,sizeof(buf));
 				AddedBytes++;
 			}
-			fr.seekg(itr->Ignore, std::ios::cur);
+			fr.seekg(itr.Ignore, std::ios::cur);
 		}
-		for (itr = FilesToIgnore.begin(); itr != FilesToIgnore.end(); itr++)
+		for (const auto& itr : FilesToIgnore)
 		{
 			AddedBytes = 0;
 			while (!fr.eof())
 			{
-				if (AddedBytes == itr->Write) break;
+				if (AddedBytes == itr.Write) break;
 				fr.read(buf, sizeof(buf));
 				fw.write(buf, sizeof(buf));
 				AddedBytes++;
 			}
-			fr.seekg(itr->Ignore, std::ios::cur);
+			fr.seekg(itr.Ignore, std::ios::cur);
 		}
 		fw.close();
 		fr.close();
@@ -490,9 +445,8 @@ public:
 	void Insert(const path &File,const string &Directory)//prepares the InfoBlock and sends it in FixData with the path to the object and new number of objects in archive)\
 		Warning: this func can only insert file or the directory(without inserting files and folders in it)
 	{
-		char *tmp;
 		if (exists(File))
-		{
+		{   char *tmp;
 			boost::filesystem::ifstream RE(File);
 			RE.seekg(0, ios::end);
 			int f_size = RE.tellg();
@@ -524,8 +478,8 @@ public:
 	{
 		std::ifstream fr(Main.string(), std::ifstream::binary);
 		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
-		char tmp[64];
-		char t[1];
+		vector<char> tmp;
+		char t;
 		vector<ToExtract> Files;
 		int s = 0,type=0;
 		path BegPath = SearchDir;
@@ -533,23 +487,23 @@ public:
 		string search, NecSize, _SearchDir, FullDir;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
-			for (int i = 0; i < 64; i++) tmp[i] = 0;
-			for (int y = 0; y < 64; y++)
+			while (!fr.eof())
 			{
-				fr.read(t, sizeof(t));
-				if (t[0] == '>')
+				fr >> t;
+				if (t == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t[0];
+				tmp.push_back(t);
 			}
 			s = 0;
-			str.Input(tmp);
+			str.Input(move(tmp));
 			search = str.Name();
 			NecSize = str.Size();
 			_SearchDir = str.SearchDir(SearchDir);
 			FullDir = str.FullDir();
+			type= str.Type();
 			path WhereToIns;
 			WhereToIns = Directory;
 			string find;
@@ -562,7 +516,7 @@ public:
 			{
 				WhereToIns.append(FullDir);
 			}
-			type= (int)tmp[2]-(int)'0';
+			
 			if (strcmp(SearchDir.c_str(), _SearchDir.c_str()) == 0)
 			{
 				if (type == 1)
@@ -578,7 +532,6 @@ public:
 					CreateDir(WhereToIns);
 				}
 			}
-			type = 0;
 		}
 		fr.close();
 		for (const auto &itr : Files)
@@ -599,27 +552,26 @@ public:
 		}
 		else return;
 		fr.seekg(LengthOfInteger(NumberOfFiles), std::ios_base::beg);
-		char tmp[64];
+		vector<char> tmp;
 		InfoBlock str;
 		string search, NecSize, _SearchDir;
 		int num = 0,trash=0, _NecSize=0;
-		char t[1];
+		char t;
 		int s = 0;
 		for (int i = 0; i < NumberOfFiles; i++)
 		{
-			for (int i = 0; i < 64; i++) tmp[i] = 0;
-			for (int y = 0; y < 64; y++)
+			while (!fr.eof())
 			{
-				fr.read(t, sizeof(t));
-				if (t[0] == '>')
+				fr >> t;
+				if (t == '>')
 				{
 					s++;
 					if (s == 5) break;
 				}
-				tmp[y] = t[0]; 
+				tmp.push_back(t);
 			}
 			s = 0;
-			str.Input(tmp);
+			str.Input(move(tmp));
 			search = str.Name();
 			NecSize = str.Size();
 			_SearchDir = str.FullDir();
@@ -633,7 +585,7 @@ public:
 		}
 		if (_NecSize != 0)
 		{
-			std::ofstream fw(work.c_str(), std::ofstream::binary);
+			std::ofstream fw(work, std::ofstream::binary);
 			char find[1];
 			int _find = 0;
 			fr.seekg(LengthOfInteger(NumberOfFiles), std::ios::beg);
@@ -707,12 +659,12 @@ public:
 	~Archive(){}
 };
 
-
 int _tmain(int argc, _TCHAR* argv[])
 {
 	setlocale(LC_ALL, "Russian");
 	system("pause");
 	return 0;
 }
+
 
 
